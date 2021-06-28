@@ -55,7 +55,7 @@ type Bucket struct {
 // header. In the case of inline buckets, the "root" will be 0.
 type bucket struct {
 	root     pgid   // page id of the bucket's root-level page
-	sequence uint64 // monotonically incrementing, used by NextSequence()
+	sequence uint64 // monotonically incrementing, used by NextSequence() 单调递增数字
 }
 
 // newBucket returns a new bucket associated with a transaction.

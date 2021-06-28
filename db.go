@@ -171,6 +171,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 	// Open data file and separate sync handler for metadata writes.
 	db.path = path
 	var err error
+	// 尝试打开文件如果不存在的话则创建
 	if db.file, err = os.OpenFile(db.path, flag|os.O_CREATE, mode); err != nil {
 		_ = db.close()
 		return nil, err
@@ -183,6 +184,8 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 	// if !options.ReadOnly.
 	// The database file is locked using the shared lock (more than one process may
 	// hold a lock at the same time) otherwise (options.ReadOnly is set).
+	// 打开文件的过程中会调用系统调用文件锁，目的是为了防止多个进程同时操作数据库文件
+	// 根据readOnly 判断是否需要加互斥锁
 	if err := flock(db, mode, !db.readOnly, options.Timeout); err != nil {
 		_ = db.close()
 		return nil, err
@@ -196,11 +199,14 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 		return nil, err
 	} else if info.Size() == 0 {
 		// Initialize new files with meta pages.
+		// 文件空的代表还没有进行文件格式化
 		if err := db.init(); err != nil {
 			return nil, err
 		}
 	} else {
 		// Read the first meta page to determine the page size.
+		// 读取4096bit的数据, 为什么这里直接就读取4096？
+		// 虽然meta的结构体远整体大小远小于4096
 		var buf [0x1000]byte
 		if _, err := db.file.ReadAt(buf[:], 0); err == nil {
 			m := db.pageInBuffer(buf[:], 0).meta()
@@ -340,22 +346,31 @@ func (db *DB) mmapSize(size int) (int, error) {
 }
 
 // init creates a new database file and initializes its meta pages.
+// 数据库文件格式如下，M 代表元数据分区, F代表空闲块管理区，D 代表数据页，元数据跟数据都是通过页(4096bit)去操作的
+// | M | M | F | D | ..| D |
+// https://github.com/boltdb/bolt/issues/308
 func (db *DB) init() error {
 	// Set the page size to the OS page size.
+	// 数据都是page 大小的，跟内存页大小对齐
+	// https://github.com/boltdb/bolt/issues/308
 	db.pageSize = os.Getpagesize()
 
 	// Create two meta pages on a buffer.
 	buf := make([]byte, db.pageSize*4)
 	for i := 0; i < 2; i++ {
+		// 初始化元数据页结构，使用unsafe包的指针操作内存地址转换成page数据结构
 		p := db.pageInBuffer(buf[:], pgid(i))
 		p.id = pgid(i)
 		p.flags = metaPageFlag
 
 		// Initialize the meta page.
+		// 除去 128bit 的固定page 信息外，剩下的 （4096 - 128）bit 就是元数据meta的存储区
 		m := p.meta()
 		m.magic = magic
 		m.version = version
 		m.pageSize = uint32(db.pageSize)
+		// pgid 0，1 是元数据页号
+		// freelist 的页号是 2
 		m.freelist = 2
 		m.root = bucket{root: 3}
 		m.pgid = 4
@@ -364,12 +379,14 @@ func (db *DB) init() error {
 	}
 
 	// Write an empty freelist at page 3.
+	// 建立一个空的free page
 	p := db.pageInBuffer(buf[:], pgid(2))
 	p.id = pgid(2)
 	p.flags = freelistPageFlag
 	p.count = 0
 
 	// Write an empty leaf page at page 4.
+	// 新建一个空的 leaf page
 	p = db.pageInBuffer(buf[:], pgid(3))
 	p.id = pgid(3)
 	p.flags = leafPageFlag
@@ -968,15 +985,15 @@ type Info struct {
 }
 
 type meta struct {
-	magic    uint32
-	version  uint32
-	pageSize uint32
-	flags    uint32
-	root     bucket
-	freelist pgid
-	pgid     pgid
-	txid     txid
-	checksum uint64
+	magic    uint32	// 魔数
+	version  uint32	// 格式版本
+	pageSize uint32	// page size 跟linux内存页大小一致
+	flags    uint32	//
+	root     bucket	// （待确认）
+	freelist pgid	// 空闲管理页的编号
+	pgid     pgid	// 待确认
+	txid     txid	// meta 本身的id，这里同样用作事物的id
+	checksum uint64	// 校验码，校验meta本身是
 }
 
 // validate checks the marker bytes and version of the meta page to ensure it matches this binary.
