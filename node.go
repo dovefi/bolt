@@ -8,16 +8,17 @@ import (
 )
 
 // node represents an in-memory, deserialized page.
+// node 节点就是对应内存中的数据存储模式，page是磁盘中的存储格式
 type node struct {
-	bucket     *Bucket
-	isLeaf     bool
+	bucket     *Bucket 	// 更上层的数据结构，类似于数据中的表的概念，一个bucket中包含了很多node
+	isLeaf     bool		// 叶子节点flag,两种数据结构branchPage，leafPage。
 	unbalanced bool
 	spilled    bool
-	key        []byte
-	pgid       pgid
-	parent     *node
-	children   nodes
-	inodes     inodes
+	key        []byte	//
+	pgid       pgid	    // 为page的id
+	parent     *node	// 父节点
+	children   nodes	// 子节点
+	inodes     inodes	// 存储key value 的结构
 }
 
 // root returns the top-level node this node is attached to.

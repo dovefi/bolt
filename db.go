@@ -97,15 +97,25 @@ type DB struct {
 	path     string
 	file     *os.File
 	lockfile *os.File // windows only
+
+	// 防止 syscall.Mmap 的结果被回收，具体访问的数据被丢到 data 上
 	dataref  []byte   // mmap'ed readonly, write throws SEGV
 	data     *[maxMapSize]byte
+
+	// 数据区域大小
 	datasz   int
 	filesz   int // current on disk file size
+
+	// 两个meta是用作备份的
 	meta0    *meta
 	meta1    *meta
 	pageSize int
 	opened   bool
+
+	// 读写事务，每次只能有一个
 	rwtx     *Tx
+
+	// 读事务列表，可以同时有多个
 	txs      []*Tx
 	freelist *freelist
 	stats    Stats
@@ -233,12 +243,14 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 	}
 
 	// Memory map the data file.
+	// boltdb 使用系统调用mmap 系统调用映射文件到内核空间，加快访问速度
 	if err := db.mmap(options.InitialMmapSize); err != nil {
 		_ = db.close()
 		return nil, err
 	}
 
 	// Read in the freelist.
+	// 启动的时候从meta里面获取到freelist 数据
 	db.freelist = newFreelist()
 	db.freelist.read(db.page(db.meta().freelist))
 
@@ -264,6 +276,7 @@ func (db *DB) mmap(minsz int) error {
 	if size < minsz {
 		size = minsz
 	}
+	// 根据文件的size，获取mmap size的大小
 	size, err = db.mmapSize(size)
 	if err != nil {
 		return err
@@ -311,6 +324,11 @@ func (db *DB) munmap() error {
 // mmapSize determines the appropriate size for the mmap given the current size
 // of the database. The minimum size is 32KB and doubles until it reaches 1GB.
 // Returns an error if the new mmap size is greater than the max allowed.
+// - mmap 最小是32kb,
+// - 如果超过32kb, 每次映射都是在原有文件的基础上翻倍
+// - 如果达到1GB 大小，每次增长1GB
+// - mmap 最大是256TB
+// - 必须保证size 是页对齐的
 func (db *DB) mmapSize(size int) (int, error) {
 	// Double the size from 32KB until 1GB.
 	for i := uint(15); i <= 30; i++ {
@@ -517,7 +535,9 @@ func (db *DB) beginTx() (*Tx, error) {
 
 	return t, nil
 }
-
+// 1. meta.txid + 1 表示一个新的写入事务，事务的id是一致递增的
+// 2. 添加读写锁，避免多个写入同时操作
+// 3. freelist 回收已经不存在的txid 关联的page
 func (db *DB) beginRWTx() (*Tx, error) {
 	// If the database was opened with Options.ReadOnly, return an error.
 	if db.readOnly {
@@ -551,6 +571,8 @@ func (db *DB) beginRWTx() (*Tx, error) {
 			minid = t.meta.txid
 		}
 	}
+
+	// 这里找到当前txs 中不存在的txs id需要释放掉空间
 	if minid > 0 {
 		db.freelist.release(minid - 1)
 	}
@@ -595,6 +617,8 @@ func (db *DB) removeTx(tx *Tx) {
 // returned from the Update() method.
 //
 // Attempting to manually commit or rollback within the function will cause a panic.
+// 1. db.Begin(true) 新开始一个写入事务
+// 2.
 func (db *DB) Update(fn func(*Tx) error) error {
 	t, err := db.Begin(true)
 	if err != nil {
@@ -989,10 +1013,10 @@ type meta struct {
 	version  uint32	// 格式版本
 	pageSize uint32	// page size 跟linux内存页大小一致
 	flags    uint32	//
-	root     bucket	// （待确认）
+	root     bucket	// 指向bucket的pgid3
 	freelist pgid	// 空闲管理页的编号
-	pgid     pgid	// 待确认
-	txid     txid	// meta 本身的id，这里同样用作事物的id
+	pgid     pgid	// 正式数据是从pgid4开始的
+	txid     txid	// 事务序列号
 	checksum uint64	// 校验码，校验meta本身是
 }
 

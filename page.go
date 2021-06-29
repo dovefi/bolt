@@ -27,12 +27,13 @@ const (
 
 type pgid uint64
 
+// page 对应的就是底层的磁盘结构体, 一个page 一般大小是4KB 也就是内存页大小
 type page struct {
-	id       pgid
-	flags    uint16
-	count    uint16
-	overflow uint32
-	ptr      uintptr
+	id       pgid    // 是pgid类型，是给page的编号。
+	flags    uint16  // 此页中保存的具体数据类型 可以是分支，叶子节点，元信息，空闲列表
+	count    uint16  // 统计叶子节点、非叶子节点、空闲列表页的个数
+	overflow uint32  // 用来记录是否有跨页主要在空闲列表上有用
+	ptr      uintptr // 是具体的数据类型 真实的数据
 }
 
 // typ returns a human readable page type string used for debugging.
@@ -107,11 +108,19 @@ func (n *branchPageElement) key() []byte {
 }
 
 // leafPageElement represents a node on a leaf page.
+//
+//						          .--------leafPageElement------.
+//													.----------------------
+// .----------pageHeader----------.                 .					  V
+// | id | flag | count | overflow | flags | pos | ksize | vsize | ......| key | value |  |
+// 											 .__________________________^
+// 								  ^
+//                                ptr
 type leafPageElement struct {
 	flags uint32
-	pos   uint32
-	ksize uint32
-	vsize uint32
+	pos   uint32 // 相对偏移
+	ksize uint32 // key 大小
+	vsize uint32 // value 大小
 }
 
 // key returns a byte slice of the node key.

@@ -36,10 +36,10 @@ const DefaultFillPercent = 0.5
 type Bucket struct {
 	*bucket
 	tx       *Tx                // the associated transaction
-	buckets  map[string]*Bucket // subbucket cache
+	buckets  map[string]*Bucket // subbucket cache 探索过程中，缓存记录下已经探索过的buckets
 	page     *page              // inline page reference
 	rootNode *node              // materialized node for the root page.
-	nodes    map[pgid]*node     // node cache
+	nodes    map[pgid]*node     // node cache 探索过程中，缓存记录下已经探索过的node
 
 	// Sets the threshold for filling nodes when they split. By default,
 	// the bucket will fill to 50% but it can be useful to increase this
