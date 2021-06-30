@@ -188,6 +188,18 @@ func (f *freelist) read(p *page) {
 // write writes the page ids onto a freelist page. All free and pending ids are
 // saved to disk since in the event of a program crash, all pending ids will
 // become free.
+// 因为 page.count 为uint16 最大可表示为 64k，所以如果 freelist.ids 的个数大于64k（0xFFFF）的时候，
+// 在存储到page 底层存储的时候会将第一个p.ptr 开始的第一个pgid(uint64)大小的位置用来存储ids的数量，同时将page.cont = 0xFFFF,
+// 以此来区分该从哪个位置开始读取freelist
+// 比如
+// 一般情况下数据是这么存储的	| pageHeader | freelist |
+//										 ^
+//                                      ptr
+//
+// idxs长度超过uint16范围后 	| pageHeader | count  |freelist |
+//										 ^        ^
+//              						ptr     ptr+pgid
+//
 func (f *freelist) write(p *page) error {
 	// Combine the old free pgids and pgids waiting on an open transaction.
 
