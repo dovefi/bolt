@@ -8,17 +8,19 @@ import (
 )
 
 // node represents an in-memory, deserialized page.
-// node 节点就是对应内存中的数据存储模式，page是磁盘中的存储格式
+// node 节点就是对应内存中的数据存储模式，也就是B+树中的node，page是磁盘中的存储格式
+// 对叶子节点而言，其没有children这个信息。同时也没有key信息。isLeaf字段为true，其上存储的key、value都保存在inodes中
+// 对于分支节点而言，其具有key信息，同时children也不一定为空。isLeaf字段为false，同时该节点上的数据保存在inode中。
 type node struct {
-	bucket     *Bucket 	// 更上层的数据结构，类似于数据中的表的概念，一个bucket中包含了很多node
-	isLeaf     bool		// 叶子节点flag,两种数据结构branchPage，leafPage。
-	unbalanced bool
-	spilled    bool
-	key        []byte	//
-	pgid       pgid	    // 为page的id
+	bucket     *Bucket 	// 关联一个桶, 更上层的数据结构，类似于数据中的表的概念，一个bucket中包含了很多node
+	isLeaf     bool		// 是否为叶子节点,两种数据结构branchPage，leafPage。
+	unbalanced bool		// 值为true的话，需要考虑页合并
+	spilled    bool		// 对于分支节点的话，保留的是最小的key
+	key        []byte	// 子节点第一个key的名字
+	pgid       pgid	    // 分支节点关联的页id
 	parent     *node	// 父节点
-	children   nodes	// 子节点
-	inodes     inodes	// 存储key value 的结构
+	children   nodes	// 子节点 (分支节点独有)
+	inodes     inodes	// 分支节点上保存的索引数据, 或者叶子节点存储key value 的结构
 }
 
 // root returns the top-level node this node is attached to.
@@ -189,6 +191,7 @@ func (n *node) read(p *page) {
 }
 
 // write writes the items onto one or more pages.
+// 将node内存结构转换为page存储结构
 func (n *node) write(p *page) {
 	// Initialize page.
 	if n.isLeaf {
@@ -334,6 +337,10 @@ func (n *node) splitIndex(threshold int) (index, sz int) {
 
 	return
 }
+
+// 分裂: 当一个node中的数据过多时，最简单就是当超过了page的填充度时，就需要将当前的node拆分成两个，也就是底层会将一页数据拆分存放到两页中。
+//
+// 合并: 当删除了一个或者一批对象时，此时可能会导致一页数据的填充度过低，此时空间可能会浪费比较多。所以就需要考虑对页之间进行数据合并。
 
 // spill writes the nodes to dirty pages and splits nodes as it goes.
 // Returns an error if dirty pages cannot be allocated.
@@ -596,9 +603,12 @@ func (s nodes) Less(i, j int) bool { return bytes.Compare(s[i].inodes[0].key, s[
 // It can be used to point to elements in a page or point
 // to an element which hasn't been added to a page yet.
 type inode struct {
+	// 表示是否是子桶叶子节点还是普通叶子节点。如果flags值为1表示子桶叶子节点，否则为普通叶子节点
 	flags uint32
+	// 当inode为分支元素时，pgid才有值，为叶子元素时，则没值
 	pgid  pgid
 	key   []byte
+	// 当inode为分支元素时，value为空，为叶子元素时，才有值
 	value []byte
 }
 

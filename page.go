@@ -95,10 +95,19 @@ func (s pages) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s pages) Less(i, j int) bool { return s[i].id < s[j].id }
 
 // branchPageElement represents a node on a branch page.
+// B+树中的非叶子节点， branchPage 只是一个索引节点，用来定位具体的key位置，当然这个是一个磁盘中的数据结构
+//
+//						          .---branchElement-----.
+//													 ---------------
+// .----------pageHeader----------.                 			 V
+// | id | flag | count | overflow | pos | ksize | pgid | ......| key1 |
+//
+// 								  ^
+//					             ptr
 type branchPageElement struct {
-	pos   uint32
-	ksize uint32
-	pgid  pgid
+	pos   uint32 // pos 用来定位从哪里开始读取key信息
+	ksize uint32 // key的长度
+	pgid  pgid	 // pgid 指向这个key 在那个page上
 }
 
 // key returns a byte slice of the node key.
@@ -108,16 +117,16 @@ func (n *branchPageElement) key() []byte {
 }
 
 // leafPageElement represents a node on a leaf page.
-//
+// B+ 数中的叶子节点，存储具体的key value值
 //						          .--------leafPageElement------.
 //													.----------------------
 // .----------pageHeader----------.                 .					  V
-// | id | flag | count | overflow | flags | pos | ksize | vsize | ......| key | value |  |
+// | id | flag | count | overflow | flags | pos | ksize | vsize | ......| key | value |
 // 											 .__________________________^
 // 								  ^
 //                                ptr
 type leafPageElement struct {
-	flags uint32
+	flags uint32 //该值主要用来区分，是子桶叶子节点元素还是普通的key/value叶子节点元素。flags值为1时表示子桶。否则为key/value
 	pos   uint32 // 相对偏移
 	ksize uint32 // key 大小
 	vsize uint32 // value 大小

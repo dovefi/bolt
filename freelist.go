@@ -64,6 +64,8 @@ func (f *freelist) copyall(dst []pgid) {
 
 // allocate returns the starting page id of a contiguous list of pages of a given size.
 // If a contiguous block cannot be found then 0 is returned.
+// 开始分配一段连续的n个页。其中返回值为初始的页id。如果无法分配，则返回0即可
+// 遍历free 列表，必须要获取到连续的n个页，获取之后删掉cache里面的缓存
 func (f *freelist) allocate(n int) pgid {
 	if len(f.ids) == 0 {
 		return 0
@@ -163,6 +165,12 @@ func (f *freelist) freed(pgid pgid) bool {
 func (f *freelist) read(p *page) {
 	// If the page.count is at the max uint16 value (64k) then it's considered
 	// an overflow and the size of the freelist is stored as the first element.
+	// 跟写入到page的过程刚好相反
+	// 首先从page 中获取数量，
+	// 如果发现count 数等于0xFFFF 那么，count 应该是存储在
+	// ptr之后的第一个idx中
+	// freelist page
+
 	idx, count := 0, int(p.count)
 	if count == 0xFFFF {
 		idx = 1
@@ -182,6 +190,7 @@ func (f *freelist) read(p *page) {
 	}
 
 	// Rebuild the page cache.
+	// 通过idx 跟pending 构建cache index
 	f.reindex()
 }
 
@@ -216,6 +225,7 @@ func (f *freelist) write(p *page) error {
 		f.copyall(((*[maxAllocSize]pgid)(unsafe.Pointer(&p.ptr)))[:])
 	} else {
 		p.count = 0xFFFF
+		// dump_historic_ops_by_duration
 		((*[maxAllocSize]pgid)(unsafe.Pointer(&p.ptr)))[0] = pgid(lenids)
 		f.copyall(((*[maxAllocSize]pgid)(unsafe.Pointer(&p.ptr)))[1:])
 	}

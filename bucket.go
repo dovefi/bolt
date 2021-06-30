@@ -33,6 +33,7 @@ const (
 const DefaultFillPercent = 0.5
 
 // Bucket represents a collection of key/value pairs inside the database.
+//  一组key/value的集合，也就是一个b+树
 type Bucket struct {
 	*bucket
 	tx       *Tx                // the associated transaction
