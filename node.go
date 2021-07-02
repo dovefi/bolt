@@ -605,10 +605,10 @@ func (s nodes) Less(i, j int) bool { return bytes.Compare(s[i].inodes[0].key, s[
 type inode struct {
 	// 表示是否是子桶叶子节点还是普通叶子节点。如果flags值为1表示子桶叶子节点，否则为普通叶子节点
 	flags uint32
-	// 当inode为分支元素时，pgid才有值，为叶子元素时，则没值
+	// 当inode为分支元素时，pgid才有值，为叶子元素时，则没值,指向的分支/叶子节点的 page id
 	pgid  pgid
 	key   []byte
-	// 当inode为分支元素时，value为空，为叶子元素时，才有值
+	// 当inode为分支元素时，value为空，为叶子元素时，才有值,// 叶子节点所存的数据
 	value []byte
 }
 
