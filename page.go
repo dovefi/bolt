@@ -15,10 +15,10 @@ const branchPageElementSize = int(unsafe.Sizeof(branchPageElement{}))
 const leafPageElementSize = int(unsafe.Sizeof(leafPageElement{}))
 
 const (
-	branchPageFlag   = 0x01
-	leafPageFlag     = 0x02
-	metaPageFlag     = 0x04
-	freelistPageFlag = 0x10
+	branchPageFlag   = 0x01 // 分支页
+	leafPageFlag     = 0x02	// 叶子页
+	metaPageFlag     = 0x04	// 元数据页
+	freelistPageFlag = 0x10	// 空闲列表页
 )
 
 const (
